@@ -9,7 +9,7 @@ from movie_data import (
     DATA_DIR,
     build_movie_table,
 )
-from training_model import (
+from modeling import (
     build_baseline_pipeline,
     build_clustering_pipeline,
 )
@@ -113,7 +113,7 @@ class MovieRecommender(BaseEstimator):
             "similarity_score": 1 - float(distance),
         }
 
-    # Keeps broad title matching while filtering recommendation candidates for basic quality.
+    # Keeps broad title matching while filtering recommendation candidates by quality.
     def filter_candidate_pool_by_quality(self, candidates, n_recommendations):
         quality_filtered = candidates[
             (candidates["mean_rating"] >= self.config.candidate_pool.min_candidate_rating)

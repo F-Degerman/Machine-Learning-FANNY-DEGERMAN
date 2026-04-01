@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 import pandas as pd
@@ -42,12 +40,6 @@ def clean_tags(tags):
 def clean_data(movies, ratings, tags):
     return clean_movies(movies), clean_ratings(ratings), clean_tags(tags)
 
-
-# Makes the tag aggregation step more readable.
-def join_unique_tags(values):
-    return " ".join(pd.unique(values))
-
-
 def build_movie_table_from_tables(ratings, movies, tags):
     rating_summary = (
         ratings.groupby("movieId", as_index=False)
@@ -59,7 +51,7 @@ def build_movie_table_from_tables(ratings, movies, tags):
 
     tag_summary = (
         tags.groupby("movieId", sort=False)["tag"]
-        .apply(join_unique_tags)
+        .apply(lambda values: " ".join(pd.unique(values)))
         .reset_index(name="tag_text")
     )
 

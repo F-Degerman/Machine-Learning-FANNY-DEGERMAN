@@ -16,23 +16,31 @@ def build_genres_vectorizer(vectorizer_config):
 
 
 def build_tag_vectorizer(vectorizer_config, n_documents=None):
-    min_df = vectorizer_config.min_df
-    max_df = vectorizer_config.max_df
-
-    if n_documents is not None and n_documents > 0 and n_documents * max_df < min_df:
-        min_df = 1
-        max_df = 1.0
-
     return TfidfVectorizer(
-        min_df=min_df,
-        max_df=max_df,
+        min_df=vectorizer_config.min_df,
+        max_df=vectorizer_config.max_df,
+        max_features=vectorizer_config.max_features,
+    )
+
+
+# Candidate pools are small enough that strict tag pruning can remove all terms.
+# Use a more permissive tag vectorizer for clustering so the feature space stays usable.
+def build_candidate_tag_vectorizer(vectorizer_config):
+    return TfidfVectorizer(
+        min_df=1,
+        max_df=1.0,
         max_features=vectorizer_config.max_features,
     )
 
 
 # Shared feature blocks used by
 # both the retrieval and clustering pipelines.
-def build_base_feature_blocks(config=RecommendationConfig(), n_documents=None):
+def build_base_feature_blocks(config=RecommendationConfig(), use_candidate_tag_vectorizer=False):
+    tag_vectorizer = (
+        build_candidate_tag_vectorizer(config.tag_vectorizer)
+        if use_candidate_tag_vectorizer
+        else build_tag_vectorizer(config.tag_vectorizer)
+    )
     return [
         (
             "genres",
@@ -41,15 +49,20 @@ def build_base_feature_blocks(config=RecommendationConfig(), n_documents=None):
         ),
         (
             "tags",
-            build_tag_vectorizer(config.tag_vectorizer, n_documents=n_documents),
+            tag_vectorizer,
             "tag_text",
         ),
     ]
 
 
 # Builds the shared feature matrix used by both retrieval and clustering.
-def build_feature_transformer(config=RecommendationConfig(), n_documents=None):
-    return ColumnTransformer(build_base_feature_blocks(config, n_documents=n_documents))
+def build_feature_transformer(config=RecommendationConfig(), use_candidate_tag_vectorizer=False):
+    return ColumnTransformer(
+        build_base_feature_blocks(
+            config,
+            use_candidate_tag_vectorizer=use_candidate_tag_vectorizer,
+        )
+    )
 
 
 def build_baseline_pipeline(config=RecommendationConfig()):
@@ -67,12 +80,11 @@ def build_baseline_pipeline(config=RecommendationConfig()):
         ]
     )
 
-
+# Cluster the candidate pool in the shared feature space.
 def build_clustering_pipeline(config=RecommendationConfig(), n_clusters=5, n_documents=None):
-    """Cluster the candidate pool in the shared feature space."""
     return Pipeline(
         [
-            ("features", build_feature_transformer(config, n_documents=n_documents)),
+            ("features", build_feature_transformer(config, use_candidate_tag_vectorizer=True)),
             ("clusterer", KMeans(n_clusters=n_clusters, n_init=config.clustering.n_init)),
         ]
     )
