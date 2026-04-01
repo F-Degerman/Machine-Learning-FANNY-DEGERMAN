@@ -7,7 +7,6 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_MOVIE_CACHE_PATH = DATA_DIR / "processed_movies.pkl"
 
 
-# This block is necessary because both the notebook and the application need one
 # consistent way to load the raw MovieLens tables before any preprocessing starts.
 def load_data(data_dir=DATA_DIR):
     movies = pd.read_csv(Path(data_dir) / "movies.csv")
