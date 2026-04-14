@@ -1,0 +1,1 @@
+Requirements: python 3.12, torch torchvision, torchcam, pillow, matplotlib, 
