@@ -6,4 +6,6 @@ scikit-learn
 jupyter
 ipykernel
 keras
-PyTorch
+torch
+torchvision
+torchcam
