@@ -65,7 +65,7 @@ def predict_image(model, input_tensor, class_names, k=5):
 
 # Generate a CAM overlay for the target class.
 def generate_cam(model, img, input_tensor, target_class):
-    cam_extractor = SmoothGradCAMpp(model)
+    cam_extractor = SmoothGradCAMpp(model, target_layer="layer4")
     
     with torch.enable_grad():
         scores = model(input_tensor)
