@@ -15,16 +15,16 @@ from torchcam.utils import overlay_mask
 # -----------------------------
 
 # Load pretrained ResNet18, matching preprocessing, and ImageNet class names.
-def setup_model(device="cpu"):
+def setup_model():
     weights = ResNet18_Weights.DEFAULT
 
-    model = models.resnet18(weights=weights).to(device)
+    model = models.resnet18(weights=weights)
     model.eval()
 
     preprocess = weights.transforms()
     class_names = weights.meta["categories"]
 
-    return model, weights, preprocess, class_names
+    return model, preprocess, class_names
 
 
 # -----------------------------
@@ -33,8 +33,6 @@ def setup_model(device="cpu"):
 
 # Run regular inference and return logits, probabilities, and top-k predictions.
 def predict_image(model, input_tensor, class_names, k=5):
-    model.eval()
-
     with torch.no_grad():
         logits = model(input_tensor)
         probs = F.softmax(logits, dim=1)
@@ -65,29 +63,21 @@ def predict_image(model, input_tensor, class_names, k=5):
 # Class activation maps
 # -----------------------------
 
-# Generate a CAM result for the target class.
-# The result includes the activation map, heatmap, and overlay image.
+# Generate a CAM overlay for the target class.
 def generate_cam(model, img, input_tensor, target_class):
-    model.eval()
     cam_extractor = SmoothGradCAMpp(model)
+    
+    with torch.enable_grad():
+        scores = model(input_tensor)
 
-    try:
-        with torch.enable_grad():
-            scores = model(input_tensor)
-
-        activation_map = cam_extractor(target_class, scores)[0]
-        heatmap = to_pil_image(activation_map.squeeze(0).detach().cpu(), mode="F")
-        overlay = overlay_mask(img, heatmap, alpha=0.5)
-
-    finally:
-        cam_extractor.remove_hooks()
+    activation_map = cam_extractor(target_class, scores)[0]
+    heatmap = to_pil_image(activation_map.squeeze(0).detach().cpu(), mode="F")
+    overlay = overlay_mask(img, heatmap, alpha=0.5)
+    cam_extractor.remove_hooks()
 
     return {
         "target_class": target_class,
-        "activation_map": activation_map.detach().cpu(),
-        "heatmap": heatmap,
         "overlay": overlay,
-        "scores": scores.detach().cpu(),
     }
 
 
@@ -109,8 +99,6 @@ def get_layer_activations(model, input_tensor, layer_names):
 
         hooks.append(layer.register_forward_hook(hook))
 
-    model.eval()
-
     with torch.no_grad():
         model(input_tensor)
 
@@ -119,19 +107,14 @@ def get_layer_activations(model, input_tensor, layer_names):
 
     return activations
 
-# Reduce feature maps from each layer into 2D images.
-def summarize_feature_maps(activations, reduction="mean"):
+# Reduce feature maps from each layer into a single 2D image by averaging channels.
+def summarize_feature_maps(activations):
     summaries = {}
 
     for layer_name, fmap in activations.items():
         fmap = fmap[0]
 
-        if reduction == "mean":
-            summary = fmap.mean(dim=0)
-        elif reduction == "max":
-            summary = fmap.max(dim=0).values
-        else:
-            raise ValueError("reduction must be 'mean' or 'max'")
+        summary = fmap.mean(dim=0)
 
         summaries[layer_name] = summary
 
@@ -155,13 +138,9 @@ def show_topk(img, pred_result):
         print(f"{row['rank']}. {row['label']}: {row['prob']:.4f}")
 
 # Show the CAM overlay image.
-def show_cam_result(cam_result, class_names=None):
+def show_cam_result(cam_result, class_names):
     target_class = cam_result["target_class"]
-
-    if class_names is not None:
-        title = f"CAM for: {class_names[target_class]}"
-    else:
-        title = f"CAM for class id {target_class}"
+    title = f"CAM for: {class_names[target_class]}"
 
     plt.figure(figsize=(5, 5))
     plt.imshow(cam_result["overlay"])
@@ -210,22 +189,20 @@ def analyze_image(
     target_class,
     layer_names=("layer1", "layer2", "layer3", "layer4"),
     k=5,
-    fmap_reduction="mean",
-    device="cpu",
 ):
     # Load the image and convert it to a model-ready tensor. 
     img = Image.open(image_path).convert("RGB")
-    input_tensor = preprocess(img).unsqueeze(0).to(device)
+    input_tensor = preprocess(img).unsqueeze(0)
 
     pred_result = predict_image(model, input_tensor, class_names, k=k)
     cam_result = generate_cam(model, img, input_tensor, target_class=target_class)
     activations = get_layer_activations(model, input_tensor, layer_names)
-    layer_summaries = summarize_feature_maps(activations, reduction=fmap_reduction)
+    layer_summaries = summarize_feature_maps(activations)
 
     return {
         "image_path": image_path,
         "img": img,
-        "input_tensor": input_tensor.detach().cpu(),
+        "input_tensor": input_tensor,
         "pred": pred_result,
         "cam": cam_result,
         "activations": activations,
@@ -233,10 +210,26 @@ def analyze_image(
     }
 
 # Run analyze_image for several images.
-def analyze_many(image_paths, **kwargs):
+def analyze_many(
+    image_paths,
+    model,
+    preprocess,
+    class_names,
+    target_class,
+    layer_names=("layer1", "layer2", "layer3", "layer4"),
+    k=5,
+):
     analyses = []
 
     for image_path in image_paths:
-        analyses.append(analyze_image(image_path=image_path, **kwargs))
+        analyses.append(analyze_image(
+            image_path=image_path,
+            model=model,
+            preprocess=preprocess,
+            class_names=class_names,
+            target_class=target_class,
+            layer_names=layer_names,
+            k=k,
+        ))
 
     return analyses
